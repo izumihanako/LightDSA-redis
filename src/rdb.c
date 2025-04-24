@@ -26,6 +26,9 @@
 #include <sys/stat.h>
 #include <sys/param.h>
 
+
+#include "memcpy_override.h" /* 用于memcpy统计 */
+
 /* This macro is called when the internal RDB structure is corrupt */
 #define rdbReportCorruptRDB(...) rdbReportError(1, __LINE__,__VA_ARGS__)
 /* This macro is called when RDB read failed (possibly a short read) */

@@ -43,6 +43,7 @@
 #include <locale.h>
 #include <sys/socket.h>
 
+#include "memcpy_override.h" /* 用于memcpy统计 */
 #ifdef __linux__
 #include <sys/mman.h>
 #endif
@@ -4395,6 +4396,7 @@ int abortShutdown(void) {
 /* The final step of the shutdown sequence. Returns C_OK if the shutdown
  * sequence was successful and it's OK to call exit(). If C_ERR is returned,
  * it's not safe to call exit(). */
+extern int stats_initialized ;
 int finishShutdown(void) {
 
     int save = server.shutdown_flags & SHUTDOWN_SAVE;
@@ -4511,6 +4513,10 @@ int finishShutdown(void) {
     if (server.aof_manifest) aofManifestFree(server.aof_manifest);
 
     /* Fire the shutdown modules event. */
+    if (stats_initialized) {
+        serverLog(LL_NOTICE, "Dumping final memcpy statistics...");
+        memcpy_stats_dump();
+    }
     moduleFireServerEvent(REDISMODULE_EVENT_SHUTDOWN,0,NULL);
 
     /* Remove the pid file if possible and needed. */

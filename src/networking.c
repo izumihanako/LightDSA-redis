@@ -22,6 +22,10 @@
 #include <math.h>
 #include <ctype.h>
 
+
+#include "memcpy_override.h" /* 用于memcpy统计 */
+// #include "memcpy_stats/memcpy_stats.h"
+
 static void setProtocolError(const char *errstr, client *c);
 static void pauseClientsByClient(mstime_t end, int isPauseClientAll);
 int postponeClientRead(client *c);
@@ -328,7 +332,7 @@ size_t _addReplyToBuffer(client *c, const char *s, size_t len) {
     if (listLength(c->reply) > 0) return 0;
 
     size_t reply_len = len > available ? available : len;
-    memcpy(c->buf+c->bufpos,s,reply_len);
+    redis_memcpy(c->buf+c->bufpos,s,reply_len);
     c->bufpos+=reply_len;
     /* We update the buffer peak after appending the reply to the buffer */
     if(c->buf_peak < (size_t)c->bufpos)

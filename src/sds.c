@@ -17,6 +17,7 @@
 #include "sdsalloc.h"
 #include "util.h"
 
+#include "memcpy_override.h" /* 用于memcpy统计 */
 const char *SDS_NOINIT = "SDS_NOINIT";
 
 static inline int sdsHdrSize(char type) {
