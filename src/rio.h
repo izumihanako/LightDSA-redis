@@ -44,6 +44,17 @@
 #define RIO_TYPE_BUFFER (1<<1)
 #define RIO_TYPE_CONN (1<<2)
 #define RIO_TYPE_FD (1<<3)
+#define RIO_TYPE_PMEM (1<<4)
+
+typedef struct {
+    char *pmem_addr;      // 映射的持久内存地址
+    size_t file_size;     // 当前文件总大小
+    size_t used_size;     // 已使用的空间大小 
+    size_t extend_size;   // 每次扩展的大小 (例如 4MB)
+    sds file_path;        // 文件路径
+    int is_pmem;          // 是否为真正的持久内存
+} rio_pmem_t ;
+
 
 struct _rio {
     /* Backend functions.
@@ -97,6 +108,8 @@ struct _rio {
             off_t pos;
             sds buf;
         } fd;
+        /*persist memory file (only for rdb backup)*/
+        rio_pmem_t pmem_file ;
     } io;
 };
 

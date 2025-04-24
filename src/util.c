@@ -50,6 +50,7 @@
 #include "util.h"
 #include "sha256.h"
 #include "config.h"
+#include <libpmem.h>
 
 #define UNUSED(x) ((void)(x))
 
@@ -1379,6 +1380,17 @@ int snprintf_async_signal_safe(char *to, size_t n, const char *fmt, ...) {
     result = vsnprintf_async_signal_safe(to, n, fmt, args);
     va_end(args);
     return result;
+}
+
+int check_if_path_is_pmem(const char *path) {
+    int is_pmem;
+    size_t mapped_len; 
+    void *addr = pmem_map_file(path, 0, PMEM_FILE_EXCL, 0, &mapped_len, &is_pmem);
+    if( addr == NULL) {
+        return 0;
+    }
+    pmem_unmap(addr, mapped_len);
+    return is_pmem;
 }
 
 #ifdef REDIS_TEST

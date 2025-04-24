@@ -55,6 +55,7 @@
 #include "crc64.h"
 #include "config.h"
 #include "server.h"
+#include <libpmem.h>
 
 /* ------------------------- Buffer I/O implementation ----------------------- */
 
@@ -428,6 +429,122 @@ void rioInitWithFd(rio *r, int fd) {
 void rioFreeFd(rio *r) {
     sdsfree(r->io.fd.buf);
 }
+
+
+/* ---------------- Persist Memory File implementation ------------------
+ * This target is used to write the RDB file to NVM.
+ * It use DSA when possible to write the data to the NVM.  */
+
+static int pm_file_extend( rio_pmem_t *handler , size_t extend_size ) { 
+    size_t new_size = handler->file_size + handler->extend_size ; 
+    if( extend_size ) new_size = handler->file_size + extend_size ; 
+    pmem_unmap(handler->pmem_addr, handler->file_size);
+    
+    handler->pmem_addr = (char*)pmem_map_file(handler->file_path, new_size, 
+                                PMEM_FILE_CREATE, 0666, &handler->file_size, &handler->is_pmem);
+    if (handler->pmem_addr == NULL) {
+        serverLog(LL_WARNING, "pmem_file %s extend failed: %s", handler->file_path, strerror(errno));
+        return 0 ; // 扩展失败
+    }
+    return 1 ;
+}
+
+static int pm_file_persist_offset_len( rio_pmem_t *handler , size_t offset , size_t len ){
+    if( handler->is_pmem ) pmem_persist(handler->pmem_addr + offset, len);
+    else pmem_msync(handler->pmem_addr + offset, len);
+    return 1 ;
+}
+
+static int pm_file_append_persist( rio_pmem_t *handler , const void *data , size_t len ) { 
+    if (handler->used_size + len > handler->file_size) {
+        size_t delta = ( len + handler->file_size - handler->used_size + handler->extend_size - 1 ) / handler->extend_size * handler->extend_size - handler->file_size;
+        if (pm_file_extend(handler, delta) != 0) {
+            serverLog(LL_WARNING, "pmem_file %s append failed : %s", handler->file_path, strerror(errno));
+            return 0 ; // 扩展失败
+        }
+    }
+    if( 1 ){
+        memcpy(handler->pmem_addr + handler->used_size, data, len);
+        pm_file_persist_offset_len(handler, handler->used_size , len);
+    } else {
+        // DSA submit
+    } 
+    handler->used_size += len;
+    return 1;
+}
+
+
+/* Returns 1 or 0 for success/failure. */
+static size_t rioPmWrite(rio *r, const void *buf, size_t len) {
+    if( pm_file_append_persist(&r->io.pmem_file, buf, len) == 0 ) {
+        serverLog(LL_WARNING, "rioPmWrite %s failed: %s", r->io.pmem_file.file_path, strerror(errno));
+        return 0;
+    }
+    return 1;
+}
+
+/* Returns 1 or 0 for success/failure. */
+static size_t rioPmRead(rio *r, void *buf, size_t len) {
+    UNUSED(r);
+    UNUSED(buf);
+    UNUSED(len);
+    return 0; /* Error, this target does not support reading. */
+}
+
+/* Returns read/write position in file. */
+static off_t rioPmTell(rio *r) {
+    return r->io.pmem_file.used_size ;
+}
+
+/* Flushes any buffer to target device if applicable. Returns 1 on success
+ * and 0 on failures. */
+static int rioPmFlush(rio *r) {
+    /* Our flush is implemented by the write method, that recognizes a
+     * buffer set to NULL with a count of zero as a flush request. */
+    return rioFdWrite(r,NULL,0);
+}
+
+static const rio rioPmIO = {
+    rioPmRead,
+    rioPmWrite,
+    rioPmTell,
+    rioPmFlush,
+    NULL,           /* update_checksum */
+    0,              /* current checksum */
+    0,              /* flags */
+    0,              /* bytes read or written */
+    0,              /* read/write chunk size */
+    { { NULL } }    /* union for io-specific vars */
+};
+
+void rioInitWithPmFile(rio *r, const char* filename) { 
+    *r = rioPmIO;
+    r->io.pmem_file.file_path = sdsnew(filename) ; 
+    r->io.pmem_file.used_size = 0 ;
+    r->io.pmem_file.extend_size = 4 * 1024 * 1024 ; // 4MB 
+    r->io.pmem_file.pmem_addr = (char*)pmem_map_file(filename, r->io.pmem_file.extend_size, 
+                                 PMEM_FILE_CREATE, 0666, &r->io.pmem_file.file_size , &r->io.pmem_file.is_pmem);
+    if (r->io.pmem_file.pmem_addr == NULL) {
+        serverLog(LL_WARNING, "pmem_map_file %s failed: %s", filename, strerror(errno));
+        return;
+    }
+}
+
+/* release the rio stream. */
+void rioFreePm(rio *r) {
+    if( r->io.pmem_file.pmem_addr ) { 
+        pmem_unmap(r->io.pmem_file.pmem_addr, r->io.pmem_file.used_size);
+        int fd = open(r->io.pmem_file.file_path, O_RDWR);
+        if (fd == -1){
+            serverLog(LL_WARNING, "rioFreePm shrink %s failed: %s", r->io.pmem_file.file_path, strerror(errno));
+            return ;
+        }
+        if (ftruncate(fd, r->io.pmem_file.used_size) != 0)
+            serverLog(LL_WARNING, "rioFreePm shrink %s failed: %s", r->io.pmem_file.file_path, strerror(errno));
+        close(fd);
+    }
+}
+
 
 /* ---------------------------- Generic functions ---------------------------- */
 

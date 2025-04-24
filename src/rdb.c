@@ -25,6 +25,7 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <sys/param.h>
+#include <libpmem.h>
 
 
 #include "memcpy_override.h" /* 用于memcpy统计 */
@@ -1528,44 +1529,56 @@ static int rdbSaveInternal(int req, const char *filename, rdbSaveInfo *rsi, int 
     int error = 0;
     int saved_errno;
     char *err_op;    /* For a detailed log */
-
-    FILE *fp = fopen(filename,"w");
-    if (!fp) {
-        saved_errno = errno;
-        char *str_err = strerror(errno);
-        char *cwdp = getcwd(cwd,MAXPATHLEN);
-        serverLog(LL_WARNING,
-            "Failed opening the temp RDB file %s (in server root dir %s) "
-            "for saving: %s",
-            filename,
-            cwdp ? cwdp : "unknown",
-            str_err);
-        errno = saved_errno;
-        return C_ERR;
+    FILE *fp = NULL;
+    
+    // check if filename is in PMEM
+    serverLog(LL_NOTICE, "checking file %s type", filename) ;
+    int is_pmem = check_if_path_is_pmem(filename) ;
+    if( is_pmem ) {
+        serverLog(LL_NOTICE,"RDB file %s is in PMEM, use PM rdb method", filename); 
+    } else {
+        serverLog(LL_NOTICE,"RDB file %s is disk file, use default method", filename);  
     }
+    if( 0 && is_pmem ){
 
-    rioInitWithFile(&rdb,fp);
+    } else { 
+        fp = fopen(filename,"w");
+        if (!fp) {
+            saved_errno = errno;
+            char *str_err = strerror(errno);
+            char *cwdp = getcwd(cwd,MAXPATHLEN);
+            serverLog(LL_WARNING,
+                "Failed opening the temp RDB file %s (in server root dir %s) "
+                "for saving: %s",
+                filename,
+                cwdp ? cwdp : "unknown",
+                str_err);
+            errno = saved_errno;
+            return C_ERR;
+        }
 
-    if (server.rdb_save_incremental_fsync) {
-        rioSetAutoSync(&rdb,REDIS_AUTOSYNC_BYTES);
-        if (!(rdbflags & RDBFLAGS_KEEP_CACHE)) rioSetReclaimCache(&rdb,1);
+        rioInitWithFile(&rdb,fp);
+
+        if (server.rdb_save_incremental_fsync) {
+            rioSetAutoSync(&rdb,REDIS_AUTOSYNC_BYTES);
+            if (!(rdbflags & RDBFLAGS_KEEP_CACHE)) rioSetReclaimCache(&rdb,1);
+        }
+
+        if (rdbSaveRio(req,&rdb,&error,rdbflags,rsi) == C_ERR) {
+            errno = error;
+            err_op = "rdbSaveRio";
+            goto werr;
+        }
+
+        /* Make sure data will not remain on the OS's output buffers */
+        if (fflush(fp)) { err_op = "fflush"; goto werr; }
+        if (fsync(fileno(fp))) { err_op = "fsync"; goto werr; }
+        if (!(rdbflags & RDBFLAGS_KEEP_CACHE) && reclaimFilePageCache(fileno(fp), 0, 0) == -1) {
+            serverLog(LL_NOTICE,"Unable to reclaim cache after saving RDB: %s", strerror(errno));
+        }
+        if (fclose(fp)) { fp = NULL; err_op = "fclose"; goto werr; } 
+        return C_OK;
     }
-
-    if (rdbSaveRio(req,&rdb,&error,rdbflags,rsi) == C_ERR) {
-        errno = error;
-        err_op = "rdbSaveRio";
-        goto werr;
-    }
-
-    /* Make sure data will not remain on the OS's output buffers */
-    if (fflush(fp)) { err_op = "fflush"; goto werr; }
-    if (fsync(fileno(fp))) { err_op = "fsync"; goto werr; }
-    if (!(rdbflags & RDBFLAGS_KEEP_CACHE) && reclaimFilePageCache(fileno(fp), 0, 0) == -1) {
-        serverLog(LL_NOTICE,"Unable to reclaim cache after saving RDB: %s", strerror(errno));
-    }
-    if (fclose(fp)) { fp = NULL; err_op = "fclose"; goto werr; }
-
-    return C_OK;
 
 werr:
     saved_errno = errno;
@@ -1600,11 +1613,11 @@ int rdbSave(int req, char *filename, rdbSaveInfo *rsi, int rdbflags) {
     startSaving(rdbflags);
     snprintf(tmpfile,256,"temp-%d.rdb", (int) getpid());
 
+    serverLog( LL_NOTICE , "RDB file saved to %s(tmp is %s)", filename, tmpfile);
     if (rdbSaveInternal(req,tmpfile,rsi,rdbflags) != C_OK) {
         stopSaving(0);
         return C_ERR;
     }
-    
     /* Use RENAME to make sure the DB file is changed atomically only
      * if the generate DB file is ok. */
     if (rename(tmpfile,filename) == -1) {
