@@ -1532,15 +1532,39 @@ static int rdbSaveInternal(int req, const char *filename, rdbSaveInfo *rsi, int 
     FILE *fp = NULL;
     
     // check if filename is in PMEM
-    serverLog(LL_NOTICE, "checking file %s type", filename) ;
     int is_pmem = check_if_path_is_pmem(filename) ;
-    if( is_pmem ) {
-        serverLog(LL_NOTICE,"RDB file %s is in PMEM, use PM rdb method", filename); 
+    if( is_pmem == -1 ){
+        serverLog( LL_NOTICE , "check mmap failed, use default method" ) ;
+    } else if( is_pmem == 1 ) {
+        serverLog(LL_NOTICE,"RDB file %s is in PMEM", filename); 
     } else {
-        serverLog(LL_NOTICE,"RDB file %s is disk file, use default method", filename);  
+        serverLog(LL_NOTICE,"RDB file %s is disk file", filename);  
     }
-    if( 0 && is_pmem ){
 
+    double st_time = get_time_double() ;
+    if( is_pmem ){
+        if( rioInitWithPmFile( &rdb, filename ) == 0 ) {
+            saved_errno = errno;
+            char *str_err = strerror(errno);
+            char *cwdp = getcwd(cwd,MAXPATHLEN);
+            serverLog(LL_WARNING,"Failed opening the temp RDB file %s (in server root dir %s) "
+                "for saving: %s", filename, cwdp ? cwdp : "unknown" , str_err );
+            errno = saved_errno ;
+            return C_ERR;
+        } 
+        if (server.rdb_save_incremental_fsync) {
+            rioSetAutoSync(&rdb,REDIS_AUTOSYNC_BYTES);
+            if (!(rdbflags & RDBFLAGS_KEEP_CACHE)) rioSetReclaimCache(&rdb,1);
+        }
+
+        if (rdbSaveRio(req,&rdb,&error,rdbflags,rsi) == C_ERR) {
+            errno = error;
+            err_op = "rdbSaveRio";
+            goto werr;
+        }
+        // we use pmem_flush during write, so here we need to drain the pmem
+        rioFlush(&rdb);
+        rioFreePm( &rdb ) ; 
     } else { 
         fp = fopen(filename,"w");
         if (!fp) {
@@ -1549,14 +1573,10 @@ static int rdbSaveInternal(int req, const char *filename, rdbSaveInfo *rsi, int 
             char *cwdp = getcwd(cwd,MAXPATHLEN);
             serverLog(LL_WARNING,
                 "Failed opening the temp RDB file %s (in server root dir %s) "
-                "for saving: %s",
-                filename,
-                cwdp ? cwdp : "unknown",
-                str_err);
+                "for saving: %s", filename, cwdp ? cwdp : "unknown", str_err);
             errno = saved_errno;
             return C_ERR;
-        }
-
+        } 
         rioInitWithFile(&rdb,fp);
 
         if (server.rdb_save_incremental_fsync) {
@@ -1568,17 +1588,19 @@ static int rdbSaveInternal(int req, const char *filename, rdbSaveInfo *rsi, int 
             errno = error;
             err_op = "rdbSaveRio";
             goto werr;
-        }
-
+        } 
         /* Make sure data will not remain on the OS's output buffers */
         if (fflush(fp)) { err_op = "fflush"; goto werr; }
         if (fsync(fileno(fp))) { err_op = "fsync"; goto werr; }
         if (!(rdbflags & RDBFLAGS_KEEP_CACHE) && reclaimFilePageCache(fileno(fp), 0, 0) == -1) {
             serverLog(LL_NOTICE,"Unable to reclaim cache after saving RDB: %s", strerror(errno));
         }
-        if (fclose(fp)) { fp = NULL; err_op = "fclose"; goto werr; } 
-        return C_OK;
-    }
+        if (fclose(fp)) { fp = NULL; err_op = "fclose"; goto werr; }  
+    } 
+    double end_time = get_time_double() ;
+    serverLog(LL_NOTICE,"RDB finished, %d bytes, cost %.3lf seconds",
+        (int) rdb.processed_bytes, end_time - st_time );
+    return C_OK;
 
 werr:
     saved_errno = errno;

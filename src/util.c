@@ -1385,12 +1385,28 @@ int snprintf_async_signal_safe(char *to, size_t n, const char *fmt, ...) {
 int check_if_path_is_pmem(const char *path) {
     int is_pmem;
     size_t mapped_len; 
-    void *addr = pmem_map_file(path, 0, PMEM_FILE_EXCL, 0, &mapped_len, &is_pmem);
+    struct stat st;
+    if (stat(path, &st) == -1) { // check if file exists
+        void *addr = pmem_map_file(path, 4 , PMEM_FILE_CREATE , 0666 , &mapped_len, &is_pmem);
+        if (addr == NULL) {
+            return -1;
+        }
+        unlink( path ) ;
+        pmem_unmap(addr, mapped_len);
+        return is_pmem;
+    }
+    void *addr = pmem_map_file(path, 0 , 0 , 0 , &mapped_len, &is_pmem);    
     if( addr == NULL) {
-        return 0;
+        return -1 ;
     }
     pmem_unmap(addr, mapped_len);
     return is_pmem;
+}
+
+double get_time_double(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (double)tv.tv_sec + ((double)tv.tv_usec / 1000000.0);
 }
 
 #ifdef REDIS_TEST
