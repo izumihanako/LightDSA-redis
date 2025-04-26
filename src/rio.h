@@ -36,6 +36,7 @@
 #include <stdint.h>
 #include "sds.h"
 #include "connection.h"
+#include "dsa_batch_c.h"
 
 #define RIO_FLAG_READ_ERROR (1<<0)
 #define RIO_FLAG_WRITE_ERROR (1<<1)
@@ -53,6 +54,7 @@ typedef struct {
     size_t extend_size;   // 每次扩展的大小 (例如 4MB)
     sds file_path;        // 文件路径
     int is_pmem;          // 是否为真正的持久内存
+    DSAbatch *batch;       // DSA批处理对象
 } rio_pmem_t ;
 
 
@@ -179,7 +181,7 @@ void rioInitWithFile(rio *r, FILE *fp);
 void rioInitWithBuffer(rio *r, sds s);
 void rioInitWithConn(rio *r, connection *conn, size_t read_limit);
 void rioInitWithFd(rio *r, int fd);
-int rioInitWithPmFile(rio *r, const char* filename) ;
+int rioInitWithPmFile(rio *r, const char* filename , int use_dsa) ;
 
 
 void rioFreeFd(rio *r);

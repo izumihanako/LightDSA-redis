@@ -126,8 +126,7 @@ static size_t rioFileWrite(rio *r, const void *buf, size_t len) {
         r->io.file.buffered += towrite;
 
         if (r->io.file.buffered >= r->io.file.autosync) {
-            fflush(r->io.file.fp);
-
+            fflush(r->io.file.fp); 
             size_t processed = r->processed_bytes + nwritten;
             serverAssert(processed % r->io.file.autosync == 0);
             serverAssert(r->io.file.buffered == r->io.file.autosync);
@@ -438,7 +437,11 @@ void rioFreeFd(rio *r) {
 static int pm_file_extend( rio_pmem_t *handler , size_t extend_size ) { 
     size_t new_size = handler->file_size + handler->extend_size ; 
     if( extend_size ) new_size = handler->file_size + extend_size ; 
-    pmem_drain() ;
+    if( handler->batch == NULL ) {
+        pmem_drain() ;
+    } else {
+        DSAbatch_wait( handler->batch ) ;
+    }
     pmem_unmap(handler->pmem_addr, handler->file_size);
     
     handler->pmem_addr = (char*)pmem_map_file(handler->file_path, new_size, 
@@ -459,11 +462,12 @@ static int pm_file_append( rio_pmem_t *handler , const void *data , size_t len )
             return 0 ; // 扩展失败
         }
     }
-    if( 1 ){
+    if( handler->batch == NULL ){
         memcpy(handler->pmem_addr + handler->used_size, data, len);
         pmem_flush( handler->pmem_addr + handler->used_size, len ); 
     } else {
         // DSA submit
+        DSAbatch_submit_memcpy( handler->batch, handler->pmem_addr + handler->used_size, data, len );
     } 
     handler->used_size += len;
     return 1;
@@ -493,7 +497,11 @@ static off_t rioPmTell(rio *r) {
 }
 
 static int rioPmFlush(rio *r) {
-    pmem_drain() ;
+    if( r->io.pmem_file.batch != NULL ) {
+        DSAbatch_wait( r->io.pmem_file.batch ) ;  
+    } else {
+        pmem_drain() ;
+    }
     UNUSED(r);
     return 1; /* Nothing to do*/
 }
@@ -511,10 +519,10 @@ static const rio rioPmIO = {
     { { NULL } }    /* union for io-specific vars */
 };
 
-int rioInitWithPmFile(rio *r, const char* filename) { 
+int rioInitWithPmFile(rio *r, const char* filename, int use_dsa ) { 
     *r = rioPmIO;
     r->io.pmem_file.used_size = 0 ;
-    r->io.pmem_file.extend_size = 128 * 1024 * 1024 ; // 4MB 
+    r->io.pmem_file.extend_size = 256 * 1024 * 1024 ; // 4MB 
     r->io.pmem_file.file_path = sdsnew(filename) ; 
     r->io.pmem_file.pmem_addr = (char*)pmem_map_file(r->io.pmem_file.file_path , r->io.pmem_file.extend_size, 
                                  PMEM_FILE_CREATE, 0666, &r->io.pmem_file.file_size , &r->io.pmem_file.is_pmem);
@@ -523,13 +531,20 @@ int rioInitWithPmFile(rio *r, const char* filename) {
         sdsfree(r->io.pmem_file.file_path);
         return 0 ;
     }
+    if( r->io.pmem_file.batch == NULL && use_dsa ) {
+        serverLog(LL_NOTICE, "pmem_file %s enable dsa", r->io.pmem_file.file_path);
+        r->io.pmem_file.batch = DSAbatch_create( 32 , 20 ) ;
+    }
     return 1 ;
 }
 
 /* release the rio stream. */
 void rioFreePm(rio *r) {
     if( r->io.pmem_file.pmem_addr ) { 
-        pmem_unmap(r->io.pmem_file.pmem_addr, r->io.pmem_file.used_size);
+        if( r->io.pmem_file.batch != NULL ) {
+            DSAbatch_printstats( r->io.pmem_file.batch ) ;
+        }
+        pmem_unmap(r->io.pmem_file.pmem_addr, r->io.pmem_file.file_size);
         int fd = open(r->io.pmem_file.file_path, O_RDWR);
         if (fd == -1){
             serverLog(LL_WARNING, "rioFreePm shrink %s failed: %s", r->io.pmem_file.file_path, strerror(errno));

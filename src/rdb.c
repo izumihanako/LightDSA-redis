@@ -1543,7 +1543,7 @@ static int rdbSaveInternal(int req, const char *filename, rdbSaveInfo *rsi, int 
 
     double st_time = get_time_double() ;
     if( is_pmem ){
-        if( rioInitWithPmFile( &rdb, filename ) == 0 ) {
+        if( rioInitWithPmFile( &rdb, filename , 1 ) == 0 ) {
             saved_errno = errno;
             char *str_err = strerror(errno);
             char *cwdp = getcwd(cwd,MAXPATHLEN);
@@ -1552,11 +1552,6 @@ static int rdbSaveInternal(int req, const char *filename, rdbSaveInfo *rsi, int 
             errno = saved_errno ;
             return C_ERR;
         } 
-        if (server.rdb_save_incremental_fsync) {
-            rioSetAutoSync(&rdb,REDIS_AUTOSYNC_BYTES);
-            if (!(rdbflags & RDBFLAGS_KEEP_CACHE)) rioSetReclaimCache(&rdb,1);
-        }
-
         if (rdbSaveRio(req,&rdb,&error,rdbflags,rsi) == C_ERR) {
             errno = error;
             err_op = "rdbSaveRio";
@@ -1564,7 +1559,7 @@ static int rdbSaveInternal(int req, const char *filename, rdbSaveInfo *rsi, int 
         }
         // we use pmem_flush during write, so here we need to drain the pmem
         rioFlush(&rdb);
-        rioFreePm( &rdb ) ; 
+        rioFreePm( &rdb ) ;
     } else { 
         fp = fopen(filename,"w");
         if (!fp) {
@@ -1598,8 +1593,8 @@ static int rdbSaveInternal(int req, const char *filename, rdbSaveInfo *rsi, int 
         if (fclose(fp)) { fp = NULL; err_op = "fclose"; goto werr; }  
     } 
     double end_time = get_time_double() ;
-    serverLog(LL_NOTICE,"RDB finished, %d bytes, cost %.3lf seconds",
-        (int) rdb.processed_bytes, end_time - st_time );
+    serverLog(LL_NOTICE,"RDB finished, %lu bytes, cost %.3lf seconds",
+        rdb.processed_bytes, end_time - st_time );
     return C_OK;
 
 werr:
@@ -1682,7 +1677,7 @@ int rdbSaveBackground(int req, char *filename, rdbSaveInfo *rsi, int rdbflags) {
 
     if ((childpid = redisFork(CHILD_TYPE_RDB)) == 0) {
         int retval;
-
+        DSAnewinit();
         /* Child */
         redisSetProcTitle("redis-rdb-bgsave");
         redisSetCpuAffinity(server.bgsave_cpulist);

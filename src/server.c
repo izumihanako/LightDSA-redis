@@ -2799,6 +2799,9 @@ void initServer(void) {
 
     if (server.maxmemory_clients != 0)
         initServerClientMemUsageBuckets();
+    
+    serverLog(LL_NOTICE, "Initializing DSAagent..."); 
+    DSAinit() ;
 }
 
 void initListeners(void) {
