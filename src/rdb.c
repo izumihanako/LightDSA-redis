@@ -1677,7 +1677,7 @@ int rdbSaveBackground(int req, char *filename, rdbSaveInfo *rsi, int rdbflags) {
 
     if ((childpid = redisFork(CHILD_TYPE_RDB)) == 0) {
         int retval;
-        DSAnewinit();
+        DSAinit_new_agent();
         /* Child */
         redisSetProcTitle("redis-rdb-bgsave");
         redisSetCpuAffinity(server.bgsave_cpulist);

@@ -1,0 +1,3 @@
+[submodule "deps/DSA_memcpy"]
+	path = deps/DSA_memcpy
+	url = git@gitee.com:yi-chuanxun/DSA_memcpy.git

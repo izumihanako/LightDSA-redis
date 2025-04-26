@@ -2801,7 +2801,7 @@ void initServer(void) {
         initServerClientMemUsageBuckets();
     
     serverLog(LL_NOTICE, "Initializing DSAagent..."); 
-    DSAinit() ;
+    DSAinit_agent() ;
 }
 
 void initListeners(void) {
