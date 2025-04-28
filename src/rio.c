@@ -435,7 +435,8 @@ void rioFreeFd(rio *r) {
  * It use DSA when possible to write the data to the NVM.  */
 
 static int pm_file_extend( rio_pmem_t *handler , size_t extend_size ) { 
-    size_t new_size = handler->file_size + handler->extend_size ; 
+    size_t new_size = handler->file_size + handler->extend_size ;
+    size_t old_size = handler->file_size ;
     if( extend_size ) new_size = handler->file_size + extend_size ; 
     if( handler->batch == NULL ) {
         pmem_drain() ;
@@ -445,12 +446,15 @@ static int pm_file_extend( rio_pmem_t *handler , size_t extend_size ) {
     pmem_unmap(handler->pmem_addr, handler->file_size);
     
     handler->pmem_addr = (char*)pmem_map_file(handler->file_path, new_size, 
-                                PMEM_FILE_CREATE, 0666, &handler->file_size, &handler->is_pmem);
+                                PMEM_FILE_CREATE , 0666, &handler->file_size, &handler->is_pmem);
     if (handler->pmem_addr == NULL) {
         serverLog(LL_WARNING, "pmem_file %s extend failed", handler->file_path );
         return 0 ; // 扩展失败
     }
-    serverLog(LL_NOTICE, "pmem_file %s extend to %zu", handler->file_path, new_size ) ;
+    // for( size_t i = old_size ; i < new_size ; i += 4096 ) { 
+    //     handler->pmem_addr[i] = 0 ;
+    // }
+    // serverLog(LL_NOTICE, "pmem_file %s extend to %zu", handler->file_path, new_size ) ;
     return 1 ;
 } 
 
@@ -521,8 +525,12 @@ static const rio rioPmIO = {
 
 int rioInitWithPmFile(rio *r, const char* filename, int use_dsa ) { 
     *r = rioPmIO;
+    if( r->io.pmem_file.batch == NULL && use_dsa ) {
+        serverLog(LL_NOTICE, "pmem_file %s enable dsa", r->io.pmem_file.file_path);
+        r->io.pmem_file.batch = DSAbatch_create( 32 , 20 ) ;
+    }
     r->io.pmem_file.used_size = 0 ;
-    r->io.pmem_file.extend_size = 256 * 1024 * 1024 ; // 4MB 
+    r->io.pmem_file.extend_size = 256 * 1024 * 1024 ; // 256MB 
     r->io.pmem_file.file_path = sdsnew(filename) ; 
     r->io.pmem_file.pmem_addr = (char*)pmem_map_file(r->io.pmem_file.file_path , r->io.pmem_file.extend_size, 
                                  PMEM_FILE_CREATE, 0666, &r->io.pmem_file.file_size , &r->io.pmem_file.is_pmem);
@@ -530,10 +538,6 @@ int rioInitWithPmFile(rio *r, const char* filename, int use_dsa ) {
         serverLog(LL_WARNING, "pmem file init %s failed: %s", filename, strerror(errno));
         sdsfree(r->io.pmem_file.file_path);
         return 0 ;
-    }
-    if( r->io.pmem_file.batch == NULL && use_dsa ) {
-        serverLog(LL_NOTICE, "pmem_file %s enable dsa", r->io.pmem_file.file_path);
-        r->io.pmem_file.batch = DSAbatch_create( 32 , 20 ) ;
     }
     return 1 ;
 }
