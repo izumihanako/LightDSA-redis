@@ -143,8 +143,8 @@ def insert_KVcache_to( client:SimpleRedisClient, num_tokens:int, chunk_size:int 
 
 def gen_range_bytes() -> bytes:
     """生成指定字节数的随机字节"""
-    num_bytes = np.random.randint(512, 16384) # 512B ~ 32KB
-    return np.random.bytes(num_bytes)
+    # num_bytes = np.random.randint(512, 16384) # 512B ~ 32KB
+    return np.random.bytes(102433)
 
 if __name__ == "__main__":
     np.random.seed(int(time.time()))
@@ -152,7 +152,7 @@ if __name__ == "__main__":
     # for i in range(1000):
     #     print( f"insert {i} times" )
     #     insert_KVcache_to( client , 5120 , 512 )
-    for i in range( 200000 ) :
+    for i in range( 30000 ) :
         client.set( gen_range_bytes() , gen_range_bytes() )
         if i % 1000 == 0:
             print( f"insert {i} times" )

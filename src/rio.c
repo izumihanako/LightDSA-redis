@@ -46,6 +46,7 @@
 
 
 #include "fmacros.h"
+#include "dsa_batch_c.h"
 #include "fpconv_dtoa.h"
 #include <string.h>
 #include <stdio.h>
@@ -436,8 +437,8 @@ void rioFreeFd(rio *r) {
 
 static int pm_file_extend( rio_pmem_t *handler , size_t extend_size ) { 
     size_t new_size = handler->file_size + handler->extend_size ;
-    size_t old_size = handler->file_size ;
-    if( extend_size ) new_size = handler->file_size + extend_size ; 
+    // size_t old_size = handler->file_size ;
+    if( extend_size ) new_size = handler->file_size + extend_size ;
     if( handler->batch == NULL ) {
         pmem_drain() ;
     } else {
@@ -458,7 +459,7 @@ static int pm_file_extend( rio_pmem_t *handler , size_t extend_size ) {
     return 1 ;
 } 
 
-static int pm_file_append( rio_pmem_t *handler , const void *data , size_t len ) { 
+static int pm_file_append( rio_pmem_t *handler , const void *data , size_t len , int use_cpu ) { 
     if (handler->used_size + len > handler->file_size) {
         size_t delta = ( len + handler->used_size + handler->extend_size - 1 ) / handler->extend_size * handler->extend_size - handler->file_size ;
         if ( pm_file_extend(handler, delta) == 0 ) {
@@ -466,9 +467,12 @@ static int pm_file_append( rio_pmem_t *handler , const void *data , size_t len )
             return 0 ; // 扩展失败
         }
     }
-    if( handler->batch == NULL ){
+    if( handler->batch == NULL){
         memcpy(handler->pmem_addr + handler->used_size, data, len);
         pmem_flush( handler->pmem_addr + handler->used_size, len ); 
+    } else if( use_cpu ){
+        memcpy(handler->pmem_addr + handler->used_size, data, len);
+        pmem_flush( handler->pmem_addr + handler->used_size, len );
     } else {
         // DSA submit
         DSAbatch_submit_memcpy( handler->batch, handler->pmem_addr + handler->used_size, data, len );
@@ -477,12 +481,40 @@ static int pm_file_append( rio_pmem_t *handler , const void *data , size_t len )
     return 1;
 }
 
-
+static int rioPmFlush(rio *r) ;
 /* Returns 1 or 0 for success/failure. */
 static size_t rioPmWrite(rio *r, const void *buf, size_t len) {
-    if( pm_file_append(&r->io.pmem_file, buf, len) == 0 ) {
-        serverLog(LL_WARNING, "rioPmWrite %s failed: %s", r->io.pmem_file.file_path, strerror(errno));
-        return 0;
+    // first fill the buffer 
+    int buf_used = r->io.pmem_file.buffer_offset ;
+    int this_write = 0 ;
+    size_t buffer_write_len = 0 ;
+// #define USE_ALIGN
+#if defined(USE_ALIGN)
+    buffer_write_len = ( len + buf_used > PMEM_BUFFER_SIZE ) ? PMEM_BUFFER_SIZE - buf_used : len ;
+    if( len > 64 ){
+        size_t align_need = 64 - ( buf_used + r->io.pmem_file.used_size ) % 64 ;
+        buffer_write_len = align_need ; 
+        this_write = 1 ;
+    }
+#endif
+    // size_t buffer_write_len = 0 ;
+    size_t direct_write_len = len - buffer_write_len ;
+    if( buffer_write_len > 0 ) {
+        memcpy( r->io.pmem_file.write_buffer + buf_used, buf, buffer_write_len );
+        r->io.pmem_file.buffer_offset += buffer_write_len ;
+    }
+    if( this_write || r->io.pmem_file.buffer_offset >= PMEM_BUFFER_SIZE - 64 ) {
+        if( pm_file_append(&r->io.pmem_file, r->io.pmem_file.write_buffer, r->io.pmem_file.buffer_offset , 1 ) == 0 ) {
+            serverLog(LL_WARNING, "rioPmWrite %s failed: %s", r->io.pmem_file.file_path, strerror(errno));
+            return 0;
+        }
+        r->io.pmem_file.buffer_offset = 0 ;
+    }
+    if( direct_write_len > 0 ) {
+        if( pm_file_append(&r->io.pmem_file, (char*)buf + buffer_write_len, direct_write_len , 0 ) == 0 ) {
+            serverLog(LL_WARNING, "rioPmWrite %s failed: %s", r->io.pmem_file.file_path, strerror(errno));
+            return 0;
+        }
     }
     return 1;
 }
@@ -501,11 +533,17 @@ static off_t rioPmTell(rio *r) {
 }
 
 static int rioPmFlush(rio *r) {
+    if( r->io.pmem_file.buffer_offset > 0 ) {
+        if( pm_file_append(&r->io.pmem_file, r->io.pmem_file.write_buffer, r->io.pmem_file.buffer_offset , 1 ) == 0 ) {
+            serverLog(LL_WARNING, "rioPmFlush %s failed: %s", r->io.pmem_file.file_path, strerror(errno));
+            return 0;
+        }
+        r->io.pmem_file.buffer_offset = 0 ;
+    }
+    pmem_drain() ;
     if( r->io.pmem_file.batch != NULL ) {
         DSAbatch_wait( r->io.pmem_file.batch ) ;  
-    } else {
-        pmem_drain() ;
-    }
+    } 
     UNUSED(r);
     return 1; /* Nothing to do*/
 }
@@ -524,14 +562,14 @@ static const rio rioPmIO = {
 };
 
 int rioInitWithPmFile(rio *r, const char* filename, int use_dsa ) { 
-    *r = rioPmIO;
+    *r = rioPmIO; 
+    r->io.pmem_file.file_path = sdsnew(filename) ; 
     if( r->io.pmem_file.batch == NULL && use_dsa ) {
         serverLog(LL_NOTICE, "pmem_file %s enable dsa", r->io.pmem_file.file_path);
         r->io.pmem_file.batch = DSAbatch_create( 32 , 20 ) ;
     }
     r->io.pmem_file.used_size = 0 ;
-    r->io.pmem_file.extend_size = 256 * 1024 * 1024 ; // 256MB 
-    r->io.pmem_file.file_path = sdsnew(filename) ; 
+    r->io.pmem_file.extend_size = 256 * 1024 * 1024 ; // 256MB
     r->io.pmem_file.pmem_addr = (char*)pmem_map_file(r->io.pmem_file.file_path , r->io.pmem_file.extend_size, 
                                  PMEM_FILE_CREATE, 0666, &r->io.pmem_file.file_size , &r->io.pmem_file.is_pmem);
     if (r->io.pmem_file.pmem_addr == NULL) {
@@ -539,6 +577,8 @@ int rioInitWithPmFile(rio *r, const char* filename, int use_dsa ) {
         sdsfree(r->io.pmem_file.file_path);
         return 0 ;
     }
+    r->io.pmem_file.write_buffer = (char*)aligned_alloc(64, PMEM_BUFFER_SIZE); // buffer size
+    r->io.pmem_file.buffer_offset = 0 ;
     return 1 ;
 }
 
@@ -558,6 +598,10 @@ void rioFreePm(rio *r) {
             serverLog(LL_WARNING, "rioFreePm shrink %s failed: %s", r->io.pmem_file.file_path, strerror(errno));
         close(fd);
         sdsfree( r->io.pmem_file.file_path );
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+            free(r->io.pmem_file.write_buffer);
+        #pragma GCC diagnostic pop 
     }
 }
 
@@ -600,6 +644,8 @@ uint8_t rioCheckType(rio *r) {
         return RIO_TYPE_BUFFER;
     } else if (r->read == rioConnRead) {
         return RIO_TYPE_CONN;
+    } else if (r->read == rioPmRead) {
+        return RIO_TYPE_PMEM;
     } else {
         /* r->read == rioFdRead */
         return RIO_TYPE_FD;

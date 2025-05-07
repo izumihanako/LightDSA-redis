@@ -47,8 +47,11 @@
 #define RIO_TYPE_FD (1<<3)
 #define RIO_TYPE_PMEM (1<<4)
 
+#define PMEM_BUFFER_SIZE 128
 typedef struct {
     char *pmem_addr;      // 映射的持久内存地址
+    char *write_buffer ;  // 小写入的缓存
+    size_t buffer_offset; // buffer 已用字节数
     size_t file_size;     // 当前文件总大小
     size_t used_size;     // 已使用的空间大小 
     size_t extend_size;   // 每次扩展的大小 (例如 4MB)
@@ -123,8 +126,9 @@ typedef struct _rio rio;
 
 static inline size_t rioWrite(rio *r, const void *buf, size_t len) {
     if (r->flags & RIO_FLAG_WRITE_ERROR) return 0;
-    while (len) {
-        size_t bytes_to_write = (r->max_processing_chunk && r->max_processing_chunk < len) ? r->max_processing_chunk : len;
+    while (len) { 
+        // size_t bytes_to_write = (r->max_processing_chunk && r->max_processing_chunk < len) ? r->max_processing_chunk : len;
+        size_t bytes_to_write = len ;
         if (r->update_cksum) r->update_cksum(r,buf,bytes_to_write);
         if (r->write(r,buf,bytes_to_write) == 0) {
             r->flags |= RIO_FLAG_WRITE_ERROR;
