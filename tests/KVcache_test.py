@@ -46,8 +46,8 @@ def tuple_kv_to_blob( kv_tensors: tuple ) -> np.ndarray:
     return kv_tensors_flatten
 
 def generate_kv_cache(num_tokens:int , fmt:str):
-    """生成模拟的KV缓存数据,以LLama3-70B为例"""
-    num_layers = 80
+    """生成模拟的KV缓存数据,以LLama3.2-8B为例"""
+    num_layers = 32
     num_kv_heads = 8
     head_size = 128
     shape = ([num_tokens, num_kv_heads, head_size]
@@ -119,7 +119,7 @@ def make_chunks( tokens: np.ndarray, kv_tensors: np.ndarray, chunk_size:int , fm
  
 def make_key(chunk_hash: str, fmt: str) -> str:
     """生成缓存键"""
-    modelname = "llama3-70B"
+    modelname = "llama3.1-8B"
     world_size = 1
     worker_id = 0
     return f"{fmt}:{modelname}:{world_size}:{worker_id}:{chunk_hash}"
@@ -149,10 +149,10 @@ def gen_range_bytes() -> bytes:
 if __name__ == "__main__":
     np.random.seed(int(time.time()))
     client = SimpleRedisClient()
-    # for i in range(1000):
-    #     print( f"insert {i} times" )
-    #     insert_KVcache_to( client , 5120 , 512 )
-    for i in range( 30000 ) :
-        client.set( gen_range_bytes() , gen_range_bytes() )
-        if i % 1000 == 0:
-            print( f"insert {i} times" )
+    for i in range(3000):
+        print( f"insert {i} times" )
+        insert_KVcache_to( client , 5120 , 512 )
+    # for i in range( 30000 ) :
+    #     client.set( gen_range_bytes() , gen_range_bytes() )
+    #     if i % 1000 == 0:
+    #         print( f"insert {i} times" )

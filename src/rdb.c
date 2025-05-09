@@ -271,7 +271,7 @@ int rdbEncodeInteger(long long value, unsigned char *enc) {
 /* Loads an integer-encoded object with the specified encoding type "enctype".
  * The returned value changes according to the flags, see
  * rdbGenericLoadStringObject() for more info. */
-void *rdbLoadIntegerObject(rio *rdb, int enctype, int flags, size_t *lenptr) {
+void *rdbLoadIntegerObject(rio *rdb, int enctype, int flags, size_t *lenptr){
     int plainFlag = flags & RDB_LOAD_PLAIN;
     int sdsFlag = flags & RDB_LOAD_SDS;
     int hfldFlag = flags & (RDB_LOAD_HFLD|RDB_LOAD_HFLD_TTL);
@@ -1543,7 +1543,8 @@ static int rdbSaveInternal(int req, const char *filename, rdbSaveInfo *rsi, int 
 
     double st_time = get_time_double() ;
     if( is_pmem ){
-        if( rioInitWithPmFile( &rdb, filename , 1 ) == 0 ) {
+        int useDSA = 0 ;
+        if( rioInitWithPmFile( &rdb, filename , useDSA ) == 0 ) {
             saved_errno = errno;
             char *str_err = strerror(errno);
             char *cwdp = getcwd(cwd,MAXPATHLEN);
