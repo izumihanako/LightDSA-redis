@@ -1,0 +1,1 @@
+./redis-cli -p 9001 shutdown & ./redis-cli -p 9002 shutdown & ./redis-cli -p 9003 shutdown & ./redis-cli -p 9004 shutdown &

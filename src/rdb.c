@@ -1543,7 +1543,7 @@ static int rdbSaveInternal(int req, const char *filename, rdbSaveInfo *rsi, int 
 
     double st_time = get_time_double() ;
     if( is_pmem ){
-        int useDSA = 0 ;
+        int useDSA = 1 ;
         if( rioInitWithPmFile( &rdb, filename , useDSA ) == 0 ) {
             saved_errno = errno;
             char *str_err = strerror(errno);
