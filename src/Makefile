@@ -34,7 +34,7 @@ endif
 ifneq ($(OPTIMIZATION),-O0)
 	OPTIMIZATION+=-fno-omit-frame-pointer
 endif
-DEPENDENCY_TARGETS=hiredis linenoise lua hdr_histogram fpconv dsa_memcpy
+DEPENDENCY_TARGETS=hiredis linenoise lua hdr_histogram fpconv lightDSA
 NODEPS:=clean distclean
 
 # Default settings
@@ -281,14 +281,14 @@ ifeq ($(MALLOC),jemalloc)
 	FINAL_LIBS := ../deps/jemalloc/lib/libjemalloc.a $(FINAL_LIBS)
 endif
 
-FINAL_CFLAGS+= -I$(shell pwd)/../deps/DSA_memcpy/src/interfaces
-FINAL_LIBS+= -L$(shell pwd)/../deps/DSA_memcpy/lib -ldsa_memcpy -lstdc++ -laccel-config
+FINAL_CFLAGS+= -I$(shell pwd)/../deps/LightDSA/src/interfaces
+FINAL_LIBS+= -L$(shell pwd)/../deps/LightDSA/lib -llightDSA -lstdc++ -laccel-config
 
-dsa_memcpy:
+lightDSA:
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
-	$(MAKE) -C ../deps/DSA_memcpy
+	$(MAKE) -C ../deps/LightDSA
 
-REDIS_SERVER_OBJ+= dsa_memcpy_redis.o
+REDIS_SERVER_OBJ+= lightDSA_redis.o
 
 # LIBSSL & LIBCRYPTO
 LIBSSL_LIBS=
@@ -337,7 +337,7 @@ else
 endif
 
 REDIS_CC=$(QUIET_CC)$(CC) $(FINAL_CFLAGS)
-REDIS_LD=$(QUIET_LINK)$(CC) $(FINAL_LDFLAGS) -Wl,-rpath,$(shell pwd)/../deps/DSA_memcpy/lib
+REDIS_LD=$(QUIET_LINK)$(CC) $(FINAL_LDFLAGS) -Wl,-rpath,$(shell pwd)/../deps/LightDSA/lib
 REDIS_INSTALL=$(QUIET_INSTALL)$(INSTALL)
 
 CCCOLOR="\033[34m"
@@ -408,8 +408,8 @@ persist-settings: distclean
 .make-prerequisites: 
 	@echo "Building dependencies..."
 	cd ../deps && $(MAKE) jemalloc
-	@echo "Building DSA_memcpy..."
-	$(MAKE) dsa_memcpy
+	@echo "Building LightDSA..."
+	$(MAKE) lightDSA
 	@touch $@
 
 # Clean everything, persist settings and build dependencies if anything changed
@@ -473,7 +473,7 @@ endif
 commands.c: $(COMMANDS_DEF_FILENAME).def
 
 clean_dsa:
-	cd ../deps/DSA_memcpy && $(MAKE) clean
+	cd ../deps/LightDSA && $(MAKE) clean
 
 clean: clean_dsa
 	rm -rf $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME) $(REDIS_CHECK_RDB_NAME) $(REDIS_CHECK_AOF_NAME) *.o *.gcda *.gcno *.gcov redis.info lcov-html Makefile.dep *.so

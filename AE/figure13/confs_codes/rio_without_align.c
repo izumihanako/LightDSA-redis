@@ -488,7 +488,7 @@ static size_t rioPmWrite(rio *r, const void *buf, size_t len) {
     int buf_used = r->io.pmem_file.buffer_offset ;
     int this_write = 0 ;
     size_t buffer_write_len = 0 ;
-#define USE_ALIGN
+// #define USE_ALIGN
 #if defined(USE_ALIGN)
     buffer_write_len = ( len + buf_used > PMEM_BUFFER_SIZE ) ? (size_t)PMEM_BUFFER_SIZE - buf_used : len ;
     if( len > 64 ){

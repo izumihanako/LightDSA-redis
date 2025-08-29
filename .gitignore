@@ -41,3 +41,10 @@ Makefile.dep
 .ccls-cache/*
 compile_commands.json
 redis.code-workspace
+AE/dataset/arxiv/**
+AE/dataset/arxiv_full.csv
+AE/dataset/arxiv.rdb
+AE/figure13/*.txt
+AE/figure13/*.pdf
+AE/figure13/*.log
+AE/figure13/*.png

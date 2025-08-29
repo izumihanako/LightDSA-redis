@@ -72,6 +72,9 @@ fpconv: .make-prerequisites
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
 	cd fpconv && $(MAKE)
 
+lightDSA: # do nothing
+	:
+
 .PHONY: fpconv
 
 ifeq ($(uname_S),SunOS)
