@@ -1,12 +1,9 @@
 #!/bin/bash
 set -e
 
-# first setup DSA, init hugepages and disable numa balancing
-echo 20480 > /proc/sys/vm/nr_hugepages
-echo 0 | sudo tee /proc/sys/kernel/numa_balancing > /dev/null
-echo 3 > /proc/sys/vm/drop_caches
-./setup_dsa.sh -d dsa0
-./setup_dsa.sh -d dsa0 -w 1 -m s -e 4 -f 1
+# first setup DSA 
+sudo ./setup_dsa.sh -d dsa0
+sudo ./setup_dsa.sh -d dsa0 -w 1 -m s -e 4 -f 1
 cd ../../
 make distclean > /dev/null
 cd AE/figure13/
@@ -15,10 +12,10 @@ cd AE/figure13/
 start_redis_servers() {
     echo "Starting Redis servers..."
     cd ../../src/
-    nohup numactl -C1 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis1.rdb --port 9001 > ../AE/figure13/redis1.log 2>&1 & 
-    nohup numactl -C2 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis2.rdb --port 9002 > ../AE/figure13/redis2.log 2>&1 & 
-    nohup numactl -C3 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis3.rdb --port 9003 > ../AE/figure13/redis3.log 2>&1 & 
-    nohup numactl -C4 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis4.rdb --port 9004 > ../AE/figure13/redis4.log 2>&1 &
+    nohup sudo numactl -C1 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis1.rdb --port 9001 > ../AE/figure13/redis1.log 2>&1 & 
+    nohup sudo numactl -C2 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis2.rdb --port 9002 > ../AE/figure13/redis2.log 2>&1 & 
+    nohup sudo numactl -C3 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis3.rdb --port 9003 > ../AE/figure13/redis3.log 2>&1 & 
+    nohup sudo numactl -C4 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis4.rdb --port 9004 > ../AE/figure13/redis4.log 2>&1 &
     sleep 10
     echo "Redis servers started on ports 9001-9004"
     cd ../AE/figure13/
