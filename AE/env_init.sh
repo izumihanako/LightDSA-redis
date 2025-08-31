@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+cd figure13
 # Setup DSA
 sudo ./setup_dsa.sh -d dsa0
 sudo ./setup_dsa.sh -d dsa0 -w 1 -m s -e 4 -f 1
