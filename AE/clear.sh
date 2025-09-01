@@ -1,4 +1,5 @@
 #!/bin/bash
+# clear all generated files by AE scripts
 rm */*.txt
 rm */*.pdf
 rm */*.log
