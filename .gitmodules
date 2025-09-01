@@ -1,3 +1,4 @@
 [submodule "deps/LightDSA"]
 	path = deps/LightDSA
-	url = git@gitee.com:yi-chuanxun/DSA_memcpy.git
+	url = git@github.com:izumihanako/LightDSA.git
+	branch = master
