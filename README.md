@@ -1,3 +1,12 @@
+# Overview
+
+This repository is a modified version of Redis that accelerates the RDB backup process using the DSA accelerator (see the paper *LightDSA: Enabling Efficient DSA Through Hardware-Aware Transparent Optimization*).
+
+Changes include:
+- `rdb.c` : Primarily modifies `rdbSaveInternal`. We add logic for writing to pmem and for optionally using DSA.
+- `rio.c` and `rio.h`: We introduce `RIO_TYPE_PMEM` in `rio.h` and implement functions required for writing to pmem devices, such as `rioPmWrite` and `rioPmFlush`. Building on the pmem-enabled Redis code, we add DSA support with ~30 LOC.
+# The Original Readme
+
 This README is just a fast *quick start* document. You can find more detailed documentation at [redis.io](https://redis.io).
 
 What is Redis?
