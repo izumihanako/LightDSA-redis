@@ -6,19 +6,19 @@ sudo ./setup_dsa.sh -d dsa0
 sudo ./setup_dsa.sh -d dsa0 -w 1 -m s -e 4 -f 1
 cd ../../
 make distclean > /dev/null
-cd AE/figure13/
+cd AE/figure14/
 
 # Function to start Redis servers
 start_redis_servers() {
     echo "Starting Redis servers..."
     cd ../../src/
-    nohup sudo numactl -C1 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis1.rdb --port 9001 > ../AE/figure13/redis1.log 2>&1 & 
-    nohup sudo numactl -C2 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis2.rdb --port 9002 > ../AE/figure13/redis2.log 2>&1 & 
-    nohup sudo numactl -C3 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis3.rdb --port 9003 > ../AE/figure13/redis3.log 2>&1 & 
-    nohup sudo numactl -C4 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis4.rdb --port 9004 > ../AE/figure13/redis4.log 2>&1 &
+    nohup sudo numactl -C1 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis1.rdb --port 9001 > ../AE/figure14/redis1.log 2>&1 & 
+    nohup sudo numactl -C2 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis2.rdb --port 9002 > ../AE/figure14/redis2.log 2>&1 & 
+    nohup sudo numactl -C3 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis3.rdb --port 9003 > ../AE/figure14/redis3.log 2>&1 & 
+    nohup sudo numactl -C4 --membind=0 ./redis-server --dir /mnt/pmemdir  --rdbcompression no --rdbchecksum no --dbfilename redis4.rdb --port 9004 > ../AE/figure14/redis4.log 2>&1 &
     sleep 10
     echo "Redis servers started on ports 9001-9004"
-    cd ../AE/figure13/
+    cd ../AE/figure14/
 }
 
 # Function to stop Redis servers
@@ -30,7 +30,7 @@ stop_redis_servers() {
     ./redis-cli -p 9003 shutdown &
     ./redis-cli -p 9004 shutdown &
     sleep 10
-    cd ../AE/figure13/
+    cd ../AE/figure14/
 }
 
 # Function to copy configuration files and compile
@@ -47,7 +47,7 @@ copy_config_files_and_compile() {
     cd ../../ 
     make > /dev/null
     make lightDSA > /dev/null
-    cd AE/figure13/ 
+    cd AE/figure14/ 
     echo "Compilation finished."
 }
 
@@ -114,6 +114,6 @@ start_redis_servers
 stop_redis_servers
 extract_rdb_times
 
-# draw figure13
-python3 figure13.py
+# draw figure14
+python3 figure14.py
 echo "Done!"

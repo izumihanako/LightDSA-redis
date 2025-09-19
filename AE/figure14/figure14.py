@@ -86,8 +86,8 @@ ax.spines['right'].set_visible(False)
 
 plt.tight_layout()
  
-plt.savefig('figure13.png', bbox_inches='tight', transparent=True)
-plt.savefig('figure13.pdf', bbox_inches='tight')  
+plt.savefig('figure14.png', bbox_inches='tight', transparent=True)
+plt.savefig('figure14.pdf', bbox_inches='tight')  
  
 
 # caption: 
